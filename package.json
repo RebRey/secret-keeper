@@ -1,0 +1,26 @@
+{
+  "name": "secret-keeper",
+  "version": "1.0.0",
+  "description": "Create a web app that keeps secrets. It must allow users to submit their secrets anonymously so that their posts are not associated with an email or a username. ",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RebRey/secret-keeper.git"
+  },
+  "author": "Rebecca Reyes",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RebRey/secret-keeper/issues"
+  },
+  "homepage": "https://github.com/RebRey/secret-keeper#readme",
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.0.3",
+    "ejs": "^3.1.8",
+    "express": "^4.18.2",
+    "mongoose": "^7.0.1"
+  }
+}
