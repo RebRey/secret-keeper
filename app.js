@@ -4,35 +4,74 @@ const mongoose = require("mongoose");
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
-const https = require("https");
-const _ = require("lodash");
 
-// Create the app and port connection
+// Create the express app and port connection
 const app = express();
 const port = 3000;
-app.listen(port, function () {
-  console.log("Server is running on port " + port + ".");
-});
 
-// // Open the connection to MongoDB local server and create the database
-// main().catch((err) => console.log(err));
-// async function main() {
-//   mongoose.set("strictQuery", false);
-//   await mongoose.connect("mongodb://127.0.0.1/blogDB");
-//   console.log("Connected to local MongoDB server.");
-// }
+// Set ejs
+app.set("view engine", "ejs");
+
+// Use body-parser and express in the app
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static("public"));
 
 // Open the connection to MongoDB Atlas and create the database
-main().catch((err) => console.log(err));
-async function main() {
+const main = async () => {
   mongoose.set("strictQuery", false);
   // Create a connection string for Mongo Atlas
   const connectionURI =
     "mongodb+srv://admin-rebecca:" +
     process.env.MONGO_ATLAS_ADMIN_PASSWORD +
-    "@cluster0.swlgzsc.mongodb.net/blogDB";
+    "@cluster0.swlgzsc.mongodb.net/userDB";
+
   // Mongo Atlas connection
   await mongoose.connect(connectionURI);
-
   console.log("Connected to MongoDB server.");
-}
+
+  // Tells express server to start listening for HTTP connects
+  app.listen(port, () => {
+    console.log("Server is running on port " + port + ".");
+  });
+};
+
+// Create Mongoose Schema for user login information
+const userSchema = new mongoose.Schema({
+  email: String,
+  password: String,
+});
+
+// Create a Mongoose Model using userSchema.
+const User = new mongoose.model("User", userSchema);
+
+// Route Handlers
+app.get("/", (req, res) => {
+  res.render("home");
+});
+
+app.get("/login", (req, res) => {
+  res.render("login");
+});
+
+app.get("/register", (req, res) => {
+  res.render("register");
+});
+
+app.post("/register", (req, res) => {
+  const newUser = new User({
+    email: req.body.email,
+    password: req.body.password,
+  });
+
+  newUser
+    .save()
+    .then(() => {
+      res.render("secrets");
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+});
+
+// Start mongoose connection
+main().catch((err) => console.log(err));
