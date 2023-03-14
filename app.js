@@ -1,21 +1,45 @@
 // Required modules
 require("dotenv").config();
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+// const encrypt = require("mongoose-encryption");
 const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
+// const md5 = require("md5");
+// const bcrypt = require("bcrypt");
+// const saltRounds = 10;
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
 
 // Create the express app and port connection
 const app = express();
 const port = 3000;
 
+// use express
+app.use(express.static("public"));
+
 // Set ejs
 app.set("view engine", "ejs");
 
-// Use body-parser and express in the app
+// Use body-parser
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static("public"));
+
+// Use session
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+
+// Use passport and initialize it
+app.use(passport.initialize());
+
+// Authenticate the session
+app.use(passport.session());
 
 // Open the connection to MongoDB Atlas and create the database
 const main = async () => {
@@ -29,11 +53,6 @@ const main = async () => {
   // Mongo Atlas connection
   await mongoose.connect(connectionURI);
   console.log("Connected to MongoDB server.");
-
-  // Tells express server to start listening for HTTP connects
-  app.listen(port, () => {
-    console.log("Server is running on port " + port + ".");
-  });
 };
 
 // Create Mongoose Schema for user login information
@@ -42,12 +61,23 @@ const userSchema = new mongoose.Schema({
   password: String,
 });
 
-// Password Encryption
-const secret = process.env.ENCRYPTION_KEY;
-userSchema.plugin(encrypt, {secret: secret, encryptedFields: ["password"]});
+// Use passport-local-mongoose package by plugging it into our userSchema
+userSchema.plugin(passportLocalMongoose);
+
+// // Password Encryption
+// const secret = process.env.ENCRYPTION_KEY;
+// userSchema.plugin(encrypt, {secret: secret, encryptedFields: ["password"]});
 
 // Create a Mongoose Model using userSchema.
 const User = new mongoose.model("User", userSchema);
+
+// Simplified Passport/Passport-Local Configuration
+// CHANGE: USE "createStrategy" INSTEAD OF "authenticate"
+passport.use(User.createStrategy());
+
+// serialized and deserialized necessary when using sessions
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 // Route Handlers
 app.get("/", (req, res) => {
@@ -62,39 +92,53 @@ app.get("/register", (req, res) => {
   res.render("register");
 });
 
-app.post("/register", (req, res) => {
-  const newUser = new User({
-    email: req.body.username,
-    password: req.body.password,
-  });
+app.get("/secrets", (req, res) => {
+  if (req.isAuthenticated()) {
+    res.render("secrets");
+  } else {
+    res.redirect("/login");
+  }
+});
 
-  newUser
-    .save()
-    .then(() => {
-      res.render("secrets");
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+app.post("/logout", (req, res, next) => {
+  req.logout(function(err) {
+    if (err) { return next(err); }
+    res.redirect('/');
+  });
+});
+
+app.post("/register", async (req, res) => {
+  try {
+    await User.register({ username: req.body.username }, req.body.password);
+  } catch (err) {
+    console.log(err);
+    res.redirect("/register");
+  }
+  passport.authenticate("local")(req, res, () => {
+    res.redirect("/secrets");
+  });
 });
 
 app.post("/login", (req, res) => {
-  const username = req.body.username;
-  const password = req.body.password;
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password,
+  });
 
-  User.findOne({ email: username })
-    .then((foundUser) => {
-      if (foundUser) {
-        if (foundUser.password === password) {
-          res.render("secrets");
-        }
-      }
-    })
-
-    //When there are errors we handle them here
-    .catch((err) => {
+  req.login(user, function (err) {
+    if (err) {
       console.log(err);
-    });
+    } else {
+      passport.authenticate("local")(req, res, function () {
+        res.redirect("/secrets");
+      });
+    }
+  });
+});
+
+// Tells express server to start listening for HTTP connects
+app.listen(port, () => {
+  console.log("Server is running on port " + port + ".");
 });
 
 // Start mongoose connection
