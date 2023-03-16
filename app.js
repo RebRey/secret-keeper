@@ -14,6 +14,8 @@ const passportLocalMongoose = require("passport-local-mongoose");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const findOrCreate = require("mongoose-findorcreate");
 const { nextTick } = require("process");
+const { response } = require("express");
+const FacebookStrategy = require("passport-facebook").Strategy;
 
 // Create the express app and port connection
 const app = express();
@@ -62,6 +64,9 @@ const userSchema = new mongoose.Schema({
   username: String,
   password: String,
   googleId: String,
+  facebookId: String,
+  secret: String,
+  name: String,
 });
 
 // Use passport-local-mongoose package by plugging it into our userSchema
@@ -82,18 +87,18 @@ const User = new mongoose.model("User", userSchema);
 passport.use(User.createStrategy());
 
 // serialized and deserialized necessary when using sessions
-passport.serializeUser(function(user, cb) {
-  process.nextTick(function() {
+passport.serializeUser((user, cb) => {
+  process.nextTick(() => {
     return cb(null, {
       id: user.id,
       username: user.username,
-      picture: user.picture
+      picture: user.picture,
     });
   });
 });
 
-passport.deserializeUser(function(user, cb) {
-  process.nextTick(function() {
+passport.deserializeUser((user, cb) => {
+  process.nextTick(() => {
     return cb(null, user);
   });
 });
@@ -109,13 +114,32 @@ passport.use(
       // retrieve userinfo
       userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
     },
-    function (accessToken, refreshToken, profile, cb) {
+    (accessToken, refreshToken, profile, cb) => {
       console.log(profile);
 
       // install and require("mongoose-findorcreate"); to make this function work
-      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      User.findOrCreate({ googleId: profile.id }, (err, user) => {
         return cb(err, user);
       });
+    }
+  )
+);
+
+// Configure Facebook Login Strategy
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.FACEBOOK_APP_ID,
+      clientSecret: process.env.FACEBOOK_APP_SECRET,
+      callbackURL: "http://localhost:3000/auth/facebook/secrets",
+    },
+    (accessToken, refreshToken, profile, cb) => {
+      User.findOrCreate(
+        { facebookId: profile.id, username: profile.displayName },
+        (err, user) => {
+          return cb(err, user);
+        }
+      );
     }
   )
 );
@@ -125,6 +149,7 @@ app.get("/", (req, res) => {
   res.render("home");
 });
 
+// Authenticate Requests for Google
 app.get(
   "/auth/google",
   passport.authenticate("google", { scope: ["profile"] })
@@ -133,8 +158,20 @@ app.get(
 app.get(
   "/auth/google/secrets",
   passport.authenticate("google", { failureRedirect: "/login" }),
-  function (req, res) {
+  (req, res) => {
     // Successful authentication, secrets page.
+    res.redirect("/secrets");
+  }
+);
+
+// Authenticate Requests For Facebook
+app.get("/auth/facebook", passport.authenticate("facebook"));
+
+app.get(
+  "/auth/facebook/secrets",
+  passport.authenticate("facebook", { failureRedirect: "/login" }),
+  (req, res) => {
+    // Successful authentication, secrets home.
     res.redirect("/secrets");
   }
 );
@@ -155,8 +192,16 @@ app.get("/secrets", (req, res) => {
   }
 });
 
+app.get("/submit", (req, res) => {
+  if (req.isAuthenticated()) {
+    res.render("submit");
+  } else {
+    res.redirect("/login");
+  }
+});
+
 app.post("/logout", (req, res, next) => {
-  req.logout(function (err) {
+  req.logout((err) => {
     if (err) {
       return next(err);
     }
@@ -182,15 +227,31 @@ app.post("/login", (req, res) => {
     password: req.body.password,
   });
 
-  req.login(user, function (err) {
+  req.login(user, (err) => {
     if (err) {
       console.log(err);
     } else {
-      passport.authenticate("local")(req, res, function () {
+      passport.authenticate("local")(req, res, () => {
         res.redirect("/secrets");
       });
     }
   });
+});
+
+app.post("/submit", async (req, res) => {
+  const submittedSecret = req.body.secret;
+  try {
+    const foundUser = await User.findById(req.user.id);
+
+    if (foundUser) {
+      foundUser.secret = submittedSecret;
+      await foundUser.save();
+      res.redirect("/secrets");
+    }
+  } catch (err) {
+    console.log(err);
+    res.sendStatus(500);
+  }
 });
 
 // Tells express server to start listening for HTTP connects
